@@ -101,6 +101,7 @@ static uint8_t DAP_Info(uint8_t id, uint8_t *info) {
       length = (uint8_t)sizeof(DAP_FW_Ver);
       memcpy(info, DAP_FW_Ver, length);
       break;
+    case DAP_ID_DEVICE_VENDOR:
 #if TARGET_FIXED
       length = (uint8_t)sizeof(TargetDeviceVendor);
       memcpy(info, TargetDeviceVendor, length);
@@ -111,16 +112,19 @@ static uint8_t DAP_Info(uint8_t id, uint8_t *info) {
       length = (uint8_t)sizeof(TargetDeviceName);
       memcpy(info, TargetDeviceName, length);
 #endif
+      break;
     case DAP_ID_BOARD_VENDOR:
 #if TARGET_FIXED
       length = (uint8_t)sizeof(TargetBoardVendor);
       memcpy(info, TargetBoardVendor, length);
 #endif
+      break;
     case DAP_ID_BOARD_NAME:
 #if TARGET_FIXED
       length = (uint8_t)sizeof(TargetBoardName);
       memcpy(info, TargetBoardName, length);
 #endif
+      break;
     case DAP_ID_PRODUCT_FW_VER:
       length = (uint8_t)sizeof(Product_FW_Ver);
       memcpy(info, Product_FW_Ver, length);
