@@ -22,9 +22,22 @@
 #include "usb_common.h"
 #include "config.h"
 
+#ifndef VCDC_UART_BRIDGE_AVAILABLE
+#define VCDC_UART_BRIDGE_AVAILABLE 0
+#endif
+
+#ifndef BULK_INTERFACE_FIRST
+#define BULK_INTERFACE_FIRST 0
+#endif
+
 #define USB_CDC_MAX_PACKET_SIZE 64
 #define USB_BULK_MAX_PACKET_SIZE 64
+#if VCDC_UART_BRIDGE_AVAILABLE
+/* Keep the second CDC within the STM32F103's 512-byte USB PMA. */
+#define USB_VCDC_MAX_PACKET_SIZE 32
+#else
 #define USB_VCDC_MAX_PACKET_SIZE 64
+#endif
 #define USB_HID_MAX_PACKET_SIZE 64
 #define USB_SERIAL_NUM_LENGTH   24
 

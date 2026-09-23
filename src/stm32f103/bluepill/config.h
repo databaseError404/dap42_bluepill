@@ -26,9 +26,19 @@
 #define USB_NVIC_LINE NVIC_USB_LP_CAN_RX0_IRQ
 #define USB_IRQ_NAME usb_lp_can_rx0_isr
 
-#define VCDC_AVAILABLE 0
+#define VCDC_AVAILABLE 1
 #define VCDC_TX_BUFFER_SIZE 128
 #define VCDC_RX_BUFFER_SIZE 128
+
+/* The second CDC-ACM port is a bridge to USART1 on PB6/PB7. */
+#define VCDC_UART_BRIDGE_AVAILABLE 1
+#define VCDC_USART USART1
+#define VCDC_USART_CLOCK RCC_USART1
+#define VCDC_USART_GPIO_PORT GPIOB
+#define VCDC_USART_GPIO_TX GPIO6
+#define VCDC_USART_GPIO_RX GPIO7
+#define VCDC_USART_NVIC_LINE NVIC_USART1_IRQ
+#define VCDC_USART_IRQ_NAME usart1_isr
 
 #define CDC_AVAILABLE 1
 #define DEFAULT_BAUDRATE 115200
@@ -64,6 +74,10 @@
 #define HID_AVAILABLE 0
 #define WINUSB_AVAILABLE 1
 #endif
+
+/* Keep interface descriptors in ascending interface-number order. Windows
+ * uses this order while binding composite-device drivers. */
+#define BULK_INTERFACE_FIRST 0
 
 /* Word size for usart_recv and usart_send */
 typedef uint16_t usart_word_t;

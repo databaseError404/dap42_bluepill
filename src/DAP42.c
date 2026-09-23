@@ -96,7 +96,7 @@ int main(void) {
     if (SEMIHOSTING) {
         initialise_monitor_handles();
     }
-    else if (VCDC_AVAILABLE) {
+    else if (VCDC_AVAILABLE && !VCDC_UART_BRIDGE_AVAILABLE) {
         retarget(STDOUT_FILENO, VIRTUAL_USART);
         retarget(STDERR_FILENO, VIRTUAL_USART);
     } else if (CDC_AVAILABLE) {

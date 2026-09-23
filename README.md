@@ -31,8 +31,15 @@ The pin mapping is as follows:
 | SWDIO  | PB14 |
 | SWCLK  | PB13 |
 | RESET  | PB0  |
-| TX     | PA2  |
-| RX     | PA3  |
+| COM1 TX (USART2) | PA2  |
+| COM1 RX (USART2) | PA3  |
+| COM2 TX (USART1 remapped) | PB6  |
+| COM2 RX (USART1 remapped) | PB7  |
+
+The BluePill build enumerates as a composite CMSIS-DAP v2 + two CDC-ACM
+serial ports. COM1 is the USART2 bridge; COM2 is the USART1 bridge. COM2 uses
+32-byte USB bulk packets to fit the STM32F103 USB packet memory area and
+defaults to 115200 8-N-1 (the CDC line-coding request can reconfigure it).
 
 Note: due to hardware limitations, all STM32F103 targets as implemented are limited to one of either the CMSIS-DAP v1 HID interface or the CMSIS-DAP v2 bulk interface.
 By default, all STM32F103 targets use the v2 bulk interface.

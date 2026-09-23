@@ -89,6 +89,9 @@ static __inline void PORT_SWD_SETUP (void)
 
 static __inline void PORT_OFF (void)
 {
+    /* Never leave the target in reset after a failed/aborted debug session. */
+    GPIO_BSRR(nRESET_GPIO_PORT) = nRESET_GPIO_PIN;
+
     GPIO_BRR(SWDIO_GPIO_PORT) = SWDIO_GPIO_PIN;
     GPIO_BRR(SWCLK_GPIO_PORT) = SWCLK_GPIO_PIN;
     gpio_set_mode(SWDIO_GPIO_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT, SWDIO_GPIO_PIN);

@@ -374,6 +374,14 @@ static const struct usb_interface_descriptor dfu_iface = {
 #endif
 
 static const struct usb_interface interfaces[] = {
+#if BULK_AVAILABLE && BULK_INTERFACE_FIRST
+    /* CMSIS-DAP bulk interface */
+    {
+        .num_altsetting = 1,
+        .altsetting = &bulk_iface,
+        // .iface_assoc = &bulk_assoc,
+    },
+#endif
 #if HID_AVAILABLE
     /* HID interface */
     {
@@ -414,7 +422,7 @@ static const struct usb_interface interfaces[] = {
         .altsetting = &dfu_iface,
     },
 #endif
-#if BULK_AVAILABLE
+#if BULK_AVAILABLE && !BULK_INTERFACE_FIRST
     /* Bulk interface */
     {
         .num_altsetting = 1,
@@ -444,14 +452,18 @@ static const char *usb_strings[] = {
     [STR_PRODUCT-1]             = (PRODUCT_NAME " CMSIS-DAP"),
     [STR_SERIAL-1]              = serial_number,
 #if CDC_AVAILABLE
-    [STR_CDC_INTF_ASSOC_DESC-1] = (PRODUCT_NAME " CDC-ACM Serial"),
-    [STR_CDC_CONTROL_INTF-1]    = "CDC Control",
-    [STR_CDC_DATA_INTF-1]       = "CDC Data",
+    [STR_CDC_INTF_ASSOC_DESC-1] = (PRODUCT_NAME " COM PA2/PA3"),
+    [STR_CDC_CONTROL_INTF-1]    = "COM PA2/PA3 Control",
+    [STR_CDC_DATA_INTF-1]       = "COM PA2/PA3",
 #endif
 #if (VCDC_AVAILABLE && CAN_RX_AVAILABLE)
     [STR_VCDC_INTF_ASSOC_DESC-1]= (PRODUCT_NAME " SLCAN"),
     [STR_VCDC_CONTROL_INTF-1]   = "SLCAN CDC Control",
     [STR_VCDC_DATA_INTF-1]      = "SLCAN CDC Data",
+#elif (VCDC_AVAILABLE && VCDC_UART_BRIDGE_AVAILABLE)
+    [STR_VCDC_INTF_ASSOC_DESC-1]= (PRODUCT_NAME " COM PB6/PB7"),
+    [STR_VCDC_CONTROL_INTF-1]   = "COM PB6/PB7 Control",
+    [STR_VCDC_DATA_INTF-1]      = "COM PB6/PB7",
 #elif VCDC_AVAILABLE
     [STR_VCDC_INTF_ASSOC_DESC-1]= (PRODUCT_NAME " Virtual CDC-ACM Serial"),
     [STR_VCDC_CONTROL_INTF-1]   = "VCDC Control",
