@@ -24,6 +24,15 @@ To build firmware for STLink/v2 knockoff designs, use the `STM32F103` target or 
 
 To build firmware for the "bluepill" dev board, use the `STM32F103-BLUEPILL` or `STM32F103-BLUEPILL-DFUBOOT` targets.
 
+Build the CMSIS-DAP v2 BluePill image with two CDC ports:
+
+```bash
+make clean
+make DAP103-BLUEPILL.bin
+```
+
+The resulting image is `build/DAP103-BLUEPILL.bin`.
+
 The pin mapping is as follows:
 
 | Signal | Pin  |
@@ -44,6 +53,15 @@ defaults to 115200 8-N-1 (the CDC line-coding request can reconfigure it).
 Note: due to hardware limitations, all STM32F103 targets as implemented are limited to one of either the CMSIS-DAP v1 HID interface or the CMSIS-DAP v2 bulk interface.
 By default, all STM32F103 targets use the v2 bulk interface.
 If you prefer the v1 HID interface, use the `STM32F103-HID` targets instead of `STM32F103`.
+
+### Parallel STM32WL programming
+
+The Windows utility
+[`util/write_script/flash_all.py`](util/write_script/README.md) discovers all
+connected DAP42 probes, shows both CDC COM ports for each BluePill probe, and
+programs selected STM32WL targets in parallel through OpenOCD. It supports
+explicit inclusion with `--serial`, exclusion with `--exclude-serial`, final
+per-probe status reporting, and automatic recovery from STM32WL RDP Level 1.
 
 ## Usage
 ### OpenOCD

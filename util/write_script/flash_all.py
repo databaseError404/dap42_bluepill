@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import os
+import re
 import shutil
 import subprocess
 import winreg
@@ -218,10 +219,16 @@ def device_is_connected(instance_id: str) -> bool:
     return locate(ctypes.byref(devinst), instance_id, 0) == 0
 
 
-def connected_programmers() -> list[tuple[str, str | None]]:
-    """Find connected dap42 USB serial numbers and their CDC COM ports."""
-    by_container: dict[str, str] = {}
-    programmers: list[tuple[str, str | None]] = []
+def com_port_sort_key(port_name: str) -> tuple[int, str]:
+    """Sort COM ports by their numeric suffix, with a stable text fallback."""
+    match = re.fullmatch(r"COM(\d+)", port_name, flags=re.IGNORECASE)
+    return (int(match.group(1)), port_name) if match else (2**31 - 1, port_name)
+
+
+def connected_programmers() -> list[tuple[str, list[str]]]:
+    """Find connected dap42 USB serial numbers and all their CDC COM ports."""
+    by_container: dict[str, list[str]] = {}
+    programmers: list[tuple[str, list[str]]] = []
 
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, USB_REGISTRY_PATH) as usb_key:
         # Find the COM-port interface of each dap42 composite USB device.
@@ -240,7 +247,10 @@ def connected_programmers() -> list[tuple[str, str | None]]:
                             port_name = None
 
                         if container_id and port_name and port_name.upper().startswith("COM"):
-                            by_container[container_id.upper()] = port_name.upper()
+                            ports = by_container.setdefault(container_id.upper(), [])
+                            normalized_port = port_name.upper()
+                            if normalized_port not in ports:
+                                ports.append(normalized_port)
 
         # The parent composite-device instance name is the dap42 USB serial.
         with winreg.OpenKey(usb_key, DAP42_DEVICE_ID) as parent_key:
@@ -252,14 +262,14 @@ def connected_programmers() -> list[tuple[str, str | None]]:
                 with winreg.OpenKey(parent_key, serial) as instance_key:
                     container_id = registry_value(instance_key, "ContainerID")
 
-                com_port = by_container.get(container_id.upper()) if container_id else None
-                programmers.append((serial, com_port))
+                com_ports = by_container.get(container_id.upper(), []) if container_id else []
+                programmers.append((serial, sorted(com_ports, key=com_port_sort_key)))
 
     return sorted(programmers)
 
 
 def print_connected_programmers(
-    programmers: list[tuple[str, str | None]] | None = None,
+    programmers: list[tuple[str, list[str]]] | None = None,
 ) -> None:
     print("Connected CMSIS-DAP programmers:")
     if programmers is None:
@@ -273,8 +283,9 @@ def print_connected_programmers(
         print("  none\n")
         return
 
-    for serial, com_port in programmers:
-        print(f"  {serial}  ->  {com_port or 'no COM port'}")
+    for serial, com_ports in programmers:
+        ports_text = ", ".join(com_ports) if com_ports else "no COM ports"
+        print(f"  {serial}  ->  {ports_text}")
     print()
 
 
@@ -326,6 +337,92 @@ def make_command(
         "-c",
         "shutdown",
     ]
+
+
+def output_reports_rdp_level_1(output: str) -> bool:
+    """Return True only for the recoverable STM32 readout-protection level."""
+    return "rdp level 1" in output.lower()
+
+
+def make_rdp_unlock_command(
+    serial: str,
+    openocd: Path,
+    scripts: Path,
+    speed_khz: int,
+    safe_mode: bool,
+) -> list[str]:
+    """Build an OpenOCD command that removes RDP level 1.
+
+    Changing RDP from level 1 to level 0 causes a hardware-enforced mass erase.
+    The option bytes are loaded immediately so a new OpenOCD process can program
+    the now-unprotected device.
+    """
+    return [
+        str(openocd),
+        "-s",
+        str(scripts),
+        "-f",
+        "interface/cmsis-dap.cfg",
+        "-c",
+        "cmsis-dap backend usb_bulk",
+        *(["-c", "cmsis-dap quirk enable"] if safe_mode else []),
+        "-c",
+        f"adapter serial {serial}",
+        "-c",
+        "transport select swd",
+        "-f",
+        "target/stm32wlx.cfg",
+        "-c",
+        f"adapter speed {speed_khz}",
+        "-c",
+        "gdb port disabled",
+        "-c",
+        "tcl port disabled",
+        "-c",
+        "telnet port disabled",
+        "-c",
+        "init",
+        "-c",
+        "reset halt",
+        "-c",
+        "stm32l4x unlock 0",
+        "-c",
+        "stm32l4x option_load 0",
+        "-c",
+        "shutdown",
+    ]
+
+
+def remove_rdp_level_1(
+    serial: str,
+    openocd: Path,
+    scripts: Path,
+    speed_khz: int,
+    safe_mode: bool,
+) -> tuple[int, str]:
+    """Remove RDP level 1 and return the OpenOCD result."""
+    try:
+        completed = subprocess.run(
+            make_rdp_unlock_command(
+                serial, openocd, scripts, speed_khz, safe_mode
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except OSError as error:
+        return -1, str(error)
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or ""
+        return -1, f"RDP unlock timed out after 60 seconds.\n{output}"
+    output_lower = completed.stdout.lower()
+    if "failed to unlock device" in output_lower or "option load failed" in output_lower:
+        return completed.returncode or 1, completed.stdout
+    return completed.returncode, completed.stdout
 
 
 def release_target_reset(
@@ -466,11 +563,55 @@ def main() -> int:
                 process.kill()
         return 130
 
-    failed = False
+    final_results: list[tuple[str, int, str, str | None]] = []
     print()
     for serial, return_code, output in results:
+        recovery_status: str | None = None
+        if return_code != 0 and output_reports_rdp_level_1(output):
+            print(f"[{serial}] RDP level 1 detected.")
+            print(f"[{serial}] Removing protection (this mass-erases target flash)...")
+            unlock_code, unlock_output = remove_rdp_level_1(
+                serial, openocd, scripts, args.speed, args.safe
+            )
+            if unlock_code == 0:
+                recovery_status = "RDP unlocked"
+                print(f"[{serial}] RDP protection removed; retrying programming...")
+                try:
+                    retry = subprocess.run(
+                        make_command(
+                            serial,
+                            firmware,
+                            openocd,
+                            scripts,
+                            args.speed,
+                            args.safe,
+                            not args.no_run,
+                        ),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        check=False,
+                    )
+                    return_code = retry.returncode
+                    output = retry.stdout
+                except OSError as error:
+                    return_code = -1
+                    output = str(error)
+            else:
+                recovery_status = "RDP unlock failed"
+                return_code = unlock_code
+                output = f"{output.rstrip()}\n\nRDP unlock output:\n{unlock_output}"
+
+        final_results.append((serial, return_code, output, recovery_status))
+
+    failed = False
+    print()
+    for serial, return_code, output, recovery_status in final_results:
         if return_code == 0:
-            print(f"[{serial}] OK")
+            suffix = " (RDP protection removed)" if recovery_status else ""
+            print(f"[{serial}] OK{suffix}")
         else:
             failed = True
             print(f"[{serial}] FAILED, OpenOCD exit code {return_code}")
@@ -484,6 +625,22 @@ def main() -> int:
                 print(f"[{serial}] WARNING: could not release target RESET.")
                 print(release_output.rstrip())
             print()
+
+    ports_by_serial = dict(programmers)
+    print("Programmer summary:")
+    for serial, return_code, _, recovery_status in final_results:
+        com_ports = ports_by_serial.get(serial, [])
+        ports_text = ", ".join(com_ports) if com_ports else "no COM ports"
+        if return_code == 0:
+            status = "OK (RDP protection removed)" if recovery_status else "OK"
+        elif recovery_status == "RDP unlock failed":
+            status = f"FAILED (RDP unlock failed, OpenOCD exit code {return_code})"
+        elif recovery_status:
+            status = f"FAILED after RDP unlock (OpenOCD exit code {return_code})"
+        else:
+            status = f"FAILED (OpenOCD exit code {return_code})"
+        print(f"  {serial}  ->  {ports_text}  ->  {status}")
+    print()
 
     if failed:
         print("One or more programmers failed.")
