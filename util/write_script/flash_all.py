@@ -5,6 +5,7 @@ Usage:
     python flash_all.py path\to\firmware.elf
     python flash_all.py path\to\firmware.bin
     python flash_all.py firmware.elf --serial SERIAL --serial SERIAL
+    python flash_all.py firmware.elf --exclude-serial SERIAL --exclude-serial SERIAL
 """
 
 from __future__ import annotations
@@ -36,6 +37,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="programmer serial number; may be specified more than once",
+    )
+    parser.add_argument(
+        "--exclude-serial",
+        action="append",
+        default=[],
+        metavar="SERIAL",
+        help="skip this programmer serial number; may be specified more than once",
     )
     parser.add_argument(
         "--openocd",
@@ -405,6 +413,12 @@ def main() -> int:
 
     if len(serials) != len(set(serials)):
         print("Duplicate --serial values were specified.")
+        return 2
+
+    excluded_serials = {value.strip() for value in args.exclude_serial if value.strip()}
+    serials = [serial for serial in serials if serial not in excluded_serials]
+    if not serials:
+        print("No programmers left after applying --exclude-serial.")
         return 2
 
     processes: list[tuple[str, subprocess.Popen[str]]] = []
